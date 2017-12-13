@@ -16,7 +16,8 @@ from conductor.lib import common, loggeria
 
 logger = logging.getLogger(__name__)
 
-class Config(object):
+
+class Config(dict):
     required_keys = []
     default_config = {'base_url': 'atomic-light-001.appspot.com',
                       'thread_count': (multiprocessing.cpu_count() * 2),
@@ -34,46 +35,57 @@ class Config(object):
         logger.debug('base dir is %s', common.base_dir())
 
         # create config. precedence is default, ENV, CLI
-        combined_config = self.default_config
-        combined_config.update(self.get_environment_config())
-        combined_config.update(self.get_user_config())
+        self.update(self.default_config)
+        self.update(self.get_environment_config())
+        self.update(self.get_user_config())
 
         # verify that we have the required params
-        self.verify_required_params(combined_config)
+        self.verify_required_params()
 
         # set the url based on account (unless one was already provided)
-        if 'url' not in combined_config:
-            combined_config['url'] = 'https://atomic-light-001.appspot.com'
+        if 'url' not in self:
+            self['url'] = 'https://atomic-light-001.appspot.com'
 
-        if 'auth_url' not in combined_config:
-            combined_config['auth_url'] = 'https://dashboard.conductortech.com'
+        if 'auth_url' not in self:
+            self['auth_url'] = 'https://dashboard.conductortech.com'
 
-        self.validate_api_key(combined_config)
-        recombined_config = self.add_api_settings(combined_config)
-        self.config = recombined_config
-        logger.debug('config is:\n%s', self.config)
+        self.validate_api_key()
+        self.add_api_settings()
+        logger.debug('config is:\n%s', self)
 
-    @staticmethod
-    def add_api_settings(settings_dict):
-        api_url = settings_dict.get("api_url", "https://api.conductortech.com")
+    @classmethod
+    def load(cls):
+        '''
+        Create a new config object based on config.yml and return it
+        Set up logging based on configuration loaded
+        '''
+        configuration = cls()
+        # If there is log level specified in config (which by default there should be)
+        # then set it for conductor's logger
+        log_level = configuration.get("log_level")
+        if log_level:
+            loggeria.set_conductor_log_level(log_level)
+        return configuration
+
+    def reload(self):
+        self.clear()
+        self.load()
+
+    def add_api_settings(self):
+        api_url = self.get("api_url", "https://api.conductortech.com")
         if os.environ.get("LOCAL"):
             api_url = "http://localhost:8081"
-        settings_dict["api_url"] = api_url
-        return settings_dict
+        self["api_url"] = api_url
 
-    @staticmethod
-    def validate_api_key(config):
+    def validate_api_key(self):
         """
         Load the API Key (if it exists)
-        Args:
-            config: client configuration object
 
         Returns: None
-
         """
-        if 'api_key_path' not in config:
-            config['api_key_path'] = os.path.join(common.base_dir(), 'auth', 'conductor_api_key')
-        api_key_path = config['api_key_path']
+        if 'api_key_path' not in self:
+            self['api_key_path'] = os.path.join(common.base_dir(), 'auth', 'conductor_api_key')
+        api_key_path = self['api_key_path']
 
         #  If the API key doesn't exist, then no biggie, just bail
         if not os.path.exists(api_key_path):
@@ -81,7 +93,7 @@ class Config(object):
             return
         try:
             with open(api_key_path, 'r') as fp:
-                config['api_key'] = json.loads(fp.read())
+                self['api_key'] = json.loads(fp.read())
         except:
             message = "An error occurred reading the API key"
             logger.error(message)
@@ -170,26 +182,11 @@ class Config(object):
         logger.warn('No valid config files found, creating default config.yml at {}'.format(config_files[-1]))
         return self.create_default_config(config_files[-1])
 
-    def verify_required_params(self, config):
-        logger.debug('config is %s', config)
+    def verify_required_params(self):
+        logger.debug('config is %s', self)
         for required_key in self.required_keys:
-            if required_key not in config:
+            if required_key not in self:
                 message = "required param '%s' is not set in the config\n" % required_key
                 message += "please either set it or export CONDUCTOR_%s to the proper value" % required_key.upper()
                 logger.error(message)
                 raise ValueError(message)
-
-
-def loadConfig():
-    '''
-    Create a new config object based on config.yml and return it
-    Set up logging based on configuration loaded
-    '''
-    configuration = Config().config
-    # If there is log level specified in config (which by default there should be)
-    # then set it for conductor's logger
-    log_level = configuration.get("log_level")
-    if log_level:
-        loggeria.set_conductor_log_level(log_level)
-    return configuration
-
