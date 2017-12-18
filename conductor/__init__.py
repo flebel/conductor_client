@@ -5,14 +5,15 @@ import logging
 import tempfile
 import warnings
 
-from conductor.lib import common, config, loggeria, version_check, wizard
+from conductor.lib import common, loggeria, version_check, wizard
+from conductor.lib.config import Config
 
 #The version string is updated by the build system.
 #Do not modify the following line.
 #__version__="0.0.0"
 
 # Read the config yaml file upon module import
-CONFIG = config.loadConfig()
+CONFIG = Config.load()
 
 #Try to ensure that we have the latest version of Conductor
 try:
